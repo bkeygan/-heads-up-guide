@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Heads Up Guide – Bruny prototype</title>
+<style>
+:root{--bg:#000;--fg:#8CFFC0;--dim:#4f9c78;--warn:#ffd23f;--card:#07130d;--line:#1d4430;--cardtxt:#fff;--cardbg:#1a1400;--btnfg:#000}
+body.day{--fg:#fff;--dim:#c4c4c4;--warn:#ffe14d;--card:#141414;--line:#555;--cardbg:#1c1700;--btnfg:#000}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif}
+body{padding:max(10px,env(safe-area-inset-top)) 12px max(14px,env(safe-area-inset-bottom));max-width:620px;margin:0 auto}
+#hud{transition:transform .2s}
+#hud.mirror{transform:scaleX(-1)}
+.row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+#speed{font-size:min(30vw,150px);font-weight:700;line-height:.9;font-variant-numeric:tabular-nums}
+.unit{font-size:20px;color:var(--dim)}
+#hdg{text-align:right;font-size:34px;font-weight:600}
+#arrow{display:inline-block;font-size:44px;transition:transform .3s}
+.next{margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:20px}
+.next small{display:block;color:var(--dim);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+#card{margin:10px 0;padding:14px;border:2px solid var(--warn);border-radius:14px;color:var(--cardtxt);background:var(--cardbg);display:none;font-size:22px;line-height:1.3}
+#card b{color:var(--warn);display:block;font-size:14px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+#card .long{font-size:16px;color:var(--cardtxt);opacity:.85;margin-top:8px}
+#card .approx{font-size:12px;color:var(--warn);margin-top:6px}
+.panel{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;font-size:15px}
+button,select{background:var(--card);color:var(--fg);border:1px solid var(--dim);border-radius:10px;padding:10px 12px;font-size:16px}
+button.primary{background:var(--fg);color:var(--btnfg);font-weight:700;border-color:var(--fg)}
+button.on{background:var(--fg);color:var(--btnfg);border-color:var(--fg)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+label{display:flex;align-items:center;gap:8px;margin:6px 0}
+input[type=range]{flex:1}
+svg{width:100%;height:210px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+#log{font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--dim);max-height:150px;overflow:auto;white-space:pre-wrap}
+.status{color:var(--dim);font-size:13px}
+.err{color:#ff8a8a}
+.hidden{display:none!important}
+</style></head><body>
+<div id="hud">
+  <div class="row">
+    <div><span id="speed">0</span><span class="unit"> km/h</span></div>
+    <div id="hdg"><span id="arrow">▲</span><br><span id="hdgtxt">--</span></div>
+  </div>
+  <div class="next" id="nextBox"><small>Next up</small><span id="nexttxt">Press Start</span></div>
+  <div id="card"></div>
+</div>
+
+<div class="panel">
+  <div class="btns">
+    <button class="primary" id="start">▶ Start</button>
+    <button id="stop">■ Stop</button>
+    <button id="reset">↺ Reset trip</button>
+    <button id="mirror">⇋ Mirror HUD</button>
+  </div>
+  <div class="btns">
+    <button id="themeBtn">☀ Day (white)</button>
+    <button id="textBtn" class="on">Aa Text</button>
+    <button id="routeBtn" class="on">🗺 Route</button>
+  </div>
+  <div class="btns">
+    <button id="modeSim" class="on">Simulate</button>
+    <button id="modeLive">Live GPS</button>
+    <button id="voiceBtn" class="on">🔊 Voice</button>
+    <button id="chatBtn" class="on">💬 Chatty</button>
+  </div>
+  <div id="simctl">
+    <label>Start sim before: <select id="startAt"></select></label>
+    <label>Speed <input type="range" id="simSpeed" min="20" max="100" value="40" step="5"><span id="simSpeedV">40 km/h</span></label>
+    <label>Time ×<select id="simScale"><option value="1">1 (real time)</option><option value="3">3</option><option value="10">10</option></select></label>
+    <div class="status">Sim drives straight lines between the real POI coordinates (ignores roads). Starts 600 m before the chosen POI.</div>
+  </div>
+  <div id="livectl" style="display:none"><div class="status" id="gpsstat">Live mode uses the phone's GPS. It must be opened over HTTPS in Safari/Chrome, not inside an embedded viewer.</div></div>
+</div>
+<div class="panel" id="mapPanel"><svg id="map" viewBox="0 0 300 210"></svg></div>
+<div class="panel"><div class="status">Guide voice</div>
+  <label>Voice <select id="voiceSel" style="flex:1;min-width:0"></select></label>
+  <label>Speed <input type="range" id="rate" min="0.8" max="1.15" step="0.05" value="0.95"><span id="rateV">0.95</span></label>
+  <div class="btns"><button id="testVoice">▶ Test voice</button></div>
+  <div class="status" id="voiceHelp">Tip (iPhone): Settings › Accessibility › Spoken Content › Voices › English › pick a voice marked Enhanced or Premium (e.g. Australia: Karen or Lee) and download it. Then reload this page and choose it here.</div></div>
+<div class="panel"><div class="btns">
+  <button id="pin">📍 Pin POI here (live)</button><button id="exp">Copy pinned POIs</button></div>
+  <div class="status" id="pinstat"></div></div>
+<div class="panel"><div class="status">Event log</div><div id="log"></div></div>
+
+<script>
+(function (root) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
+
+  function dist(a, b) {
+    const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+  function bearing(a, b) {
+    const y = Math.sin(toRad(b.lon - a.lon)) * Math.cos(toRad(b.lat));
+    const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lon - a.lon));
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  function angDiff(a, b) { return ((a - b + 540) % 360) - 180; }   // signed, -180..180
+  function dest(p, brg, m) {
+    const d = m / R, b = toRad(brg), la = toRad(p.lat), lo = toRad(p.lon);
+    const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+    const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+    return { lat: toDeg(la2), lon: ((toDeg(lo2) + 540) % 360) - 180 };
+  }
+  function lookahead(speedMs) { return Math.max(200, speedMs * 15); }
+  function spokenDist(m) {
+    if (m < 75) return 'just';
+    if (m >= 1000) return 'about ' + (Math.round(m / 100) / 10) + ' kilometres';
+    return 'about ' + (Math.round(m / 50) * 50) + ' metres';
+  }
+  function compass(h) {
+    return ['N','NE','E','SE','S','SW','W','NW'][Math.round(h / 45) % 8];
+  }
+  function buildSpeech(p, d, chatty) {
+    const sd = spokenDist(d);
+    const side = p.side === 'left' ? ' on your left' : p.side === 'right' ? ' on your right' : '';
+    const lead = sd === 'just' ? 'Just ahead' + side + '.' : 'In ' + sd + side + '.';
+    return { short: lead + ' ' + p.short, long: chatty && p.long ? p.long : '' };
+  }
+
+  function createEngine(pois, opts) {
+    opts = Object.assign({ coneDeg: 50, minSpeed: 1.4, minDist: 25 }, opts || {});
+    const fired = new Set(), last = new Map();
+    return {
+      fired,
+      reset() { fired.clear(); last.clear(); },
+      update(fix) {
+        const out = { events: [], lookahead: lookahead(fix.speed || 0) };
+        if (fix.heading == null || isNaN(fix.heading) || (fix.speed || 0) < opts.minSpeed) return out;
+        for (const p of pois) {
+          if (fired.has(p.id) || p.disabled) continue;
+          const d = dist(fix, p), prev = last.get(p.id);
+          last.set(p.id, d);
+          if (d > out.lookahead || d < opts.minDist) continue;
+          const off = Math.abs(angDiff(bearing(fix, p), fix.heading));
+          const approachOK = p.approach == null || Math.abs(angDiff(p.approach, fix.heading)) <= (p.tol || 60);
+          const closing = prev == null || d < prev;
+          if (off <= opts.coneDeg && approachOK && closing) {
+            fired.add(p.id);
+            out.events.push({ poi: p, distance: d, offset: off });
+          }
+        }
+        return out;
+      },
+      // nearest not-yet-announced POI roughly ahead, for the HUD "next" line
+      next(fix, maxM) {
+        if (fix.heading == null || isNaN(fix.heading)) return null;
+        let best = null;
+        for (const p of pois) {
+          if (fired.has(p.id) || p.disabled) continue;
+          const d = dist(fix, p);
+          if (d > (maxM || 8000)) continue;
+          if (Math.abs(angDiff(bearing(fix, p), fix.heading)) > 70) continue;
+          if (!best || d < best.distance) best = { poi: p, distance: d };
+        }
+        return best;
+      }
+    };
+  }
+
+  // Simulated route (straight lines between waypoints; ignores real roads)
+  function buildRoute(wps) {
+    const pts = wps.slice(), cum = [0], idCum = {};
+    if (pts[0].id) idCum[pts[0].id] = 0;
+    for (let i = 1; i < pts.length; i++) {
+      cum.push(cum[i - 1] + dist(pts[i - 1], pts[i]));
+      if (pts[i].id) idCum[pts[i].id] = cum[i];
+    }
+    return { pts, cum, idCum, total: cum[cum.length - 1] };
+  }
+  function positionAt(route, s) {
+    s = Math.max(0, Math.min(route.total, s));
+    let i = 1;
+    while (i < route.pts.length - 1 && route.cum[i] < s) i++;
+    const a = route.pts[i - 1], b = route.pts[i], seg = route.cum[i] - route.cum[i - 1];
+    const brg = bearing(a, b);
+    const p = dest(a, brg, Math.min(seg, s - route.cum[i - 1]));
+    return { lat: p.lat, lon: p.lon, heading: brg, s, done: s >= route.total };
+  }
+
+  const api = { dist, bearing, angDiff, dest, lookahead, spokenDist, compass, buildSpeech, createEngine, buildRoute, positionAt };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HUDCore = api;
+})(typeof self !== 'undefined' ? self : this);
+
+// POI data. approx:true = coordinates are a stand-in and need a field check ("Pin here").
+const POIS = [
+  { id:"bruny-ferry", name:"Roberts Point ferry terminal", lat:-43.143162, lon:147.286789, side:null,
+    short:"Welcome to Bruny! You've just landed from the Kettering ferry. Island time starts now.",
+    long:"Fun fact: Bruny is really two islands, north and south, stitched together by a skinny sandy strip called The Neck. You'll meet it shortly. Don't count on phone signal everywhere out here.",
+    src:"exploroz.com", verified:"2026-11-07" },
+  { id:"get-shucked", name:"Get Shucked oyster bar", lat:-43.198791, lon:147.386847, side:null, approx:true,
+    short:"Get Shucked is coming up. Bay-to-bar oysters, and yes, there's a drive-through.",
+    long:"The oysters are grown just across the road in Great Bay, so they haven't travelled far. Locals say they can sell out by the afternoon, so don't leave it for the trip home. Bring a cooler bag.",
+    src:"coords from neighbouring address", verified:"2026-11-07" },
+  { id:"bruny-cheese", name:"Bruny Island Cheese Co.", lat:-43.2041137, lon:147.3856342, side:null,
+    short:"Bruny Island Cheese Co. ahead. Cheese, house-made bread, and a brewery out the back.",
+    long:"Traditional European-style cheeses are made here, and the Bruny Island Beer Co. moved into the grounds in 2016. The baked cheese gets all the love. Start building that picnic, because the bread fridge is still to come.",
+    src:"freeguides.com", verified:"2026-11-07" },
+  { id:"truganini-lookout", name:"The Neck, Truganini Lookout", lat:-43.269756, lon:147.347916, side:null,
+    short:"The Neck! Pull in for the stairs up to Truganini Lookout. It's the best view on the island.",
+    long:"The Neck is the thin sandy strip joining North and South Bruny. The steps lead up to a lookout and a memorial to the Nuenonne people, and boardwalks let you watch shearwaters and little penguins. Go early for parking.",
+    src:"exploroz.com", verified:"2026-11-07" },
+  { id:"bread-fridge", name:"The Bread Fridge (Bruny Baker)", lat:-43.29506, lon:147.26417, side:null, approx:true,
+    short:"Bread fridge ahead! The honesty-system sourdough stall on the corner of Sheepwash Road. Slow down and indicate early.",
+    long:"Two retro fridges stocked by the Bruny Baker with wood-fired sourdough and biscuits. Pay by cash through the slot or by bank transfer. If it's empty, there's a number inside the door to text. The edge is rough and parking is tight, so give traffic behind you plenty of warning and don't block the road.",
+    src:"Sheepwash Bay coordinate used as a stand-in", verified:"2026-11-07" },
+  { id:"lighthouse-lookout", name:"Lookout to Cape Bruny Lighthouse", lat:-43.476334, lon:147.159882, side:null,
+    short:"Lookout coming up with your first proper view of Cape Bruny Lighthouse down the coast.",
+    long:"The tower sits right at the southern tip, and this pull-off has the best view of it on the way in. Grab the photo now, then get excited.",
+    src:"exploroz.com", verified:"2026-11-07" },
+  { id:"cape-bruny-lighthouse", name:"Cape Bruny Lighthouse", lat:-43.4911, lon:147.1422, side:null,
+    short:"Cape Bruny Lighthouse. End of the road and the southern tip of Bruny.",
+    long:"First lit in March 1838, it was Tasmania's third lighthouse and Australia's fourth. It shone until 1996, when a small modern light took over. Head keeper William Hawkins served here for over 37 years, a record. Climb the track for the view, or book a tour of the tower.",
+    src:"Wikipedia, lighthouses.net.au", verified:"2026-11-07" }
+];
+
+
+const $=id=>document.getElementById(id);
+let mode='sim',running=false,voiceOn=true,chatty=true,mirror=false,day=false,showText=true,showRoute=true;
+let engine=HUDCore.createEngine(POIS),simS=0,simTimer=null,watchId=null,lastFix=null,wake=null,actx=null;
+
+// ---- route for sim
+const order=['bruny-ferry','get-shucked','bruny-cheese','truganini-lookout','bread-fridge','lighthouse-lookout','cape-bruny-lighthouse'];
+const byId=Object.fromEntries(POIS.map(p=>[p.id,p]));
+const wps=order.map(id=>({id,lat:byId[id].lat,lon:byId[id].lon}));
+const lead=HUDCore.dest(wps[0],HUDCore.bearing(wps[1],wps[0]),1200);
+const route=HUDCore.buildRoute([{lat:lead.lat,lon:lead.lon},...wps]);
+order.forEach(id=>{const o=document.createElement('option');o.value=id;o.textContent=byId[id].name;$('startAt').appendChild(o);});
+$('startAt').value='bruny-cheese';
+
+function log(m){const t=new Date().toLocaleTimeString();$('log').textContent=t+'  '+m+'\n'+$('log').textContent.slice(0,3000);}
+
+// ---- audio / speech
+function unlockAudio(){
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();actx.resume&&actx.resume();}catch(e){}
+  try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);}}catch(e){}
+}
+function chime(){
+  if(!actx)return;
+  try{[[880,0],[1320,.16]].forEach(([f,t])=>{const o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.value=f;
+    g.gain.setValueAtTime(0,actx.currentTime+t);g.gain.linearRampToValueAtTime(.35,actx.currentTime+t+.02);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+t+.5);
+    o.connect(g).connect(actx.destination);o.start(actx.currentTime+t);o.stop(actx.currentTime+t+.55);});}catch(e){}
+}
+function voiceScore(v){
+  let sc=0;const n=v.name||'';
+  if(/premium/i.test(n))sc+=60;else if(/enhanced/i.test(n))sc+=45;
+  if(/en[-_]AU/i.test(v.lang))sc+=30;else if(/en[-_]GB/i.test(v.lang))sc+=20;else if(/en[-_]/i.test(v.lang))sc+=10;
+  if(/karen|lee|matilda|catherine|serena|daniel|samantha|google/i.test(n))sc+=8;
+  if(/compact|novelty|whisper|bad|bells|boing|organ|zarvox|trinoids|cellos|jester|albert|fred|junior|kathy|ralph|bahh|bubbles|superstar/i.test(n))sc-=80;
+  if(!/^en/i.test(v.lang))sc-=100;
+  return sc;
+}
+let voices=[],chosenName=null;
+try{chosenName=localStorage.getItem('voiceName');}catch(e){}
+function loadVoices(){
+  voices=((window.speechSynthesis&&speechSynthesis.getVoices())||[]).filter(v=>/^en/i.test(v.lang)).sort((a,b)=>voiceScore(b)-voiceScore(a));
+  const sel=$('voiceSel');sel.innerHTML='';
+  voices.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name+' ('+v.lang+')';sel.appendChild(o);});
+  if(!voices.length){const o=document.createElement('option');o.textContent='No English voices found';sel.appendChild(o);return;}
+  sel.value=(chosenName&&voices.some(v=>v.name===chosenName))?chosenName:voices[0].name;
+}
+function pickVoice(){return voices.find(v=>v.name===$('voiceSel').value)||voices[0]||null;}
+function say(text){
+  if(!voiceOn||!text||!('speechSynthesis' in window))return;
+  try{
+    const v=pickVoice(),rate=+$('rate').value;
+    // one utterance per sentence gives natural pauses and avoids the flat run-on delivery
+    text.split(/(?<=[.!?])\s+/).filter(Boolean).forEach(part=>{
+      const u=new SpeechSynthesisUtterance(part);if(v){u.voice=v;u.lang=v.lang;}u.rate=rate;u.pitch=1;speechSynthesis.speak(u);});
+  }catch(e){}
+}
+
+// ---- announce
+function announce(ev){
+  const sp=HUDCore.buildSpeech(ev.poi,ev.distance,chatty);
+  const c=$('card');c.style.display='block';
+  c.innerHTML='<b>🔔 '+esc(ev.poi.name)+' · '+Math.round(ev.distance/10)*10+' m</b>'+esc(sp.short)+
+    (sp.long?'<div class="long">'+esc(sp.long)+'</div>':'')+(ev.poi.approx?'<div class="approx">⚠ location approximate – pin it on site</div>':'');
+  log('DING '+ev.poi.name+' @ '+Math.round(ev.distance)+' m'+(ev.poi.approx?' (approx coords)':''));
+  try{speechSynthesis.cancel();}catch(e){}
+  chime();setTimeout(()=>{say(sp.short);if(sp.long)say(sp.long);},650);
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---- fix handling
+function onFix(f){
+  lastFix=f;
+  const kmh=Math.round((f.speed||0)*3.6);
+  $('speed').textContent=kmh;
+  if(f.heading!=null&&!isNaN(f.heading)){
+    $('arrow').style.transform='rotate('+f.heading+'deg)';
+    $('hdgtxt').textContent=Math.round(f.heading)+'° '+HUDCore.compass(f.heading);
+  }
+  const r=engine.update(f);
+  r.events.forEach(announce);
+  const n=engine.next(f);
+  $('nexttxt').textContent=n?n.poi.name+' · '+(n.distance>=1000?(n.distance/1000).toFixed(1)+' km':Math.round(n.distance/10)*10+' m'):'Nothing ahead right now';
+  drawMap(f);
+}
+
+// ---- sim
+function startSim(){
+  const id=$('startAt').value;
+  simS=Math.max(0,(route.idCum[id]||0)-600);
+  const kmh=+$('simSpeed').value,scale=+$('simScale').value;
+  let prev=performance.now();
+  simTimer=setInterval(()=>{
+    const now=performance.now(),dt=(now-prev)/1000;prev=now;
+    const v=(+$('simSpeed').value)/3.6;simS+=v*dt*(+$('simScale').value);
+    const p=HUDCore.positionAt(route,simS);
+    onFix({lat:p.lat,lon:p.lon,heading:p.heading,speed:v});
+    if(p.done){log('Sim route finished');stop();}
+  },250);
+  log('Sim started before '+byId[id].name+' at '+kmh+' km/h ×'+scale);
+}
+
+// ---- live
+function startLive(){
+  if(!('geolocation' in navigator)){gpsMsg('No geolocation in this browser.',1);return false;}
+  let prevPos=null;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    const c=pos.coords;let heading=(c.heading!=null&&!isNaN(c.heading))?c.heading:null,speed=c.speed;
+    const cur={lat:c.latitude,lon:c.longitude,t:pos.timestamp};
+    if(prevPos){const d=HUDCore.dist(prevPos,cur),dt=(cur.t-prevPos.t)/1000;
+      if(dt>0&&speed==null)speed=d/dt;
+      if(heading==null&&d>5)heading=HUDCore.bearing(prevPos,cur);
+      if(d>5)prevPos=cur;}else prevPos=cur;
+    gpsMsg('GPS ±'+Math.round(c.accuracy)+' m');
+    onFix({lat:cur.lat,lon:cur.lon,heading:heading==null?(lastFix&&lastFix.heading):heading,speed:speed||0,acc:c.accuracy});
+  },err=>{gpsMsg('GPS error: '+err.message+(err.code===1?' (permission denied or blocked in this viewer – open the page directly over HTTPS)':''),1);log('GPS error '+err.code);},
+  {enableHighAccuracy:true,maximumAge:1000,timeout:15000});
+  return true;
+}
+function gpsMsg(m,e){const s=$('gpsstat');s.textContent=m;s.className='status'+(e?' err':'');}
+
+// ---- control
+async function start(){
+  if(running)return;unlockAudio();
+  try{if(navigator.wakeLock)wake=await navigator.wakeLock.request('screen');}catch(e){}
+  running=true;$('start').textContent='● Running';
+  if(mode==='sim')startSim();else if(!startLive()){running=false;$('start').textContent='▶ Start';}
+}
+function stop(){
+  running=false;$('start').textContent='▶ Start';
+  clearInterval(simTimer);simTimer=null;
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  try{wake&&wake.release();}catch(e){}wake=null;
+  try{speechSynthesis.cancel();}catch(e){}
+}
+function setMode(m){stop();mode=m;$('modeSim').className=m==='sim'?'on':'';$('modeLive').className=m==='live'?'on':'';
+  $('simctl').style.display=m==='sim'?'':'none';$('livectl').style.display=m==='live'?'':'none';}
+$('start').onclick=start;$('stop').onclick=stop;
+$('reset').onclick=()=>{engine.reset();$('card').style.display='none';log('Trip reset');};
+$('mirror').onclick=()=>{mirror=!mirror;$('hud').classList.toggle('mirror',mirror);$('mirror').className=mirror?'on':'';};
+$('modeSim').onclick=()=>setMode('sim');$('modeLive').onclick=()=>setMode('live');
+$('voiceBtn').onclick=()=>{voiceOn=!voiceOn;$('voiceBtn').className=voiceOn?'on':'';if(!voiceOn)try{speechSynthesis.cancel();}catch(e){}};
+$('chatBtn').onclick=()=>{chatty=!chatty;$('chatBtn').className=chatty?'on':'';};
+$('simSpeed').oninput=()=>$('simSpeedV').textContent=$('simSpeed').value+' km/h';
+
+// ---- pin POIs (live only; localStorage is a light convenience and may be unavailable)
+let pinned=[];try{pinned=JSON.parse(localStorage.getItem('pinned')||'[]');}catch(e){}
+function pinStat(){$('pinstat').textContent=pinned.length+' pinned this session'+(pinned.length?' (copy to send them to me)':'');}pinStat();
+$('pin').onclick=()=>{
+  if(!lastFix||mode!=='live'){$('pinstat').textContent='Pinning needs Live GPS running.';return;}
+  pinned.push({id:'pin-'+(pinned.length+1),name:'TODO name',lat:+lastFix.lat.toFixed(6),lon:+lastFix.lon.toFixed(6),heading:lastFix.heading==null?null:Math.round(lastFix.heading),side:null,time:new Date().toISOString()});
+  try{localStorage.setItem('pinned',JSON.stringify(pinned));}catch(e){}
+  pinStat();log('Pinned '+lastFix.lat.toFixed(5)+', '+lastFix.lon.toFixed(5));
+};
+$('exp').onclick=async()=>{
+  const t=JSON.stringify(pinned,null,2);
+  try{await navigator.clipboard.writeText(t);$('pinstat').textContent='Copied '+pinned.length+' pinned POIs.';}
+  catch(e){$('log').textContent=t;$('pinstat').textContent='Copy blocked here – JSON shown in the log below.';}
+};
+
+// ---- minimap
+function drawMap(f){
+  const all=[...route.pts,...POIS];
+  const la=all.map(p=>p.lat),lo=all.map(p=>p.lon);
+  const minLa=Math.min(...la),maxLa=Math.max(...la),minLo=Math.min(...lo),maxLo=Math.max(...lo);
+  const k=Math.cos(minLa*Math.PI/180),W=300,H=210,pad=14;
+  const sc=Math.min((W-2*pad)/((maxLo-minLo)*k),(H-2*pad)/(maxLa-minLa));
+  const X=p=>pad+(p.lon-minLo)*k*sc,Y=p=>H-pad-(p.lat-minLa)*sc;
+  let s='<polyline fill="none" stroke="'+(day?'#777':'#1d4430')+'" stroke-width="3" points="'+route.pts.map(p=>X(p).toFixed(1)+','+Y(p).toFixed(1)).join(' ')+'"/>';
+  POIS.forEach(p=>{const done=engine.fired.has(p.id);
+    s+='<circle cx="'+X(p).toFixed(1)+'" cy="'+Y(p).toFixed(1)+'" r="5" fill="'+(done?(day?'#888':'#4f9c78'):(day?'#ffe14d':'#ffd23f'))+'"/>';});
+  if(f)s+='<circle cx="'+X(f).toFixed(1)+'" cy="'+Y(f).toFixed(1)+'" r="6" fill="'+(day?'#fff':'#8CFFC0')+'" stroke="#000" stroke-width="2"/>';
+  $('map').innerHTML=s;
+}
+drawMap(null);
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=loadVoices;}
+loadVoices();setTimeout(loadVoices,800);
+$('voiceSel').onchange=()=>{chosenName=$('voiceSel').value;try{localStorage.setItem('voiceName',chosenName);}catch(e){}};
+$('rate').oninput=()=>{$('rateV').textContent=(+$('rate').value).toFixed(2);};
+$('testVoice').onclick=()=>{unlockAudio();try{speechSynthesis.cancel();}catch(e){}chime();setTimeout(()=>{const was=voiceOn;voiceOn=true;say("Bread fridge ahead! The honesty-system sourdough stall on the corner of Sheepwash Road. Slow down and indicate early.");voiceOn=was;},650);};
+
+// ---- display toggles + theme (remembered per browser if storage allows)
+try{const t=JSON.parse(localStorage.getItem('ui')||'{}');day=!!t.day;if(t.showText===false)showText=false;if(t.showRoute===false)showRoute=false;}catch(e){}
+function applyUI(){
+  document.body.classList.toggle('day',day);
+  $('themeBtn').textContent=day?'🌙 Night (green)':'☀ Day (white)';
+  $('textBtn').className=showText?'on':'';$('routeBtn').className=showRoute?'on':'';
+  $('card').classList.toggle('hidden',!showText);$('nextBox').classList.toggle('hidden',!showText);
+  $('mapPanel').classList.toggle('hidden',!showRoute);
+  try{localStorage.setItem('ui',JSON.stringify({day,showText,showRoute}));}catch(e){}
+}
+$('themeBtn').onclick=()=>{day=!day;applyUI();};
+$('textBtn').onclick=()=>{showText=!showText;applyUI();};
+$('routeBtn').onclick=()=>{showRoute=!showRoute;applyUI();};
+applyUI();
+</script></body></html>
